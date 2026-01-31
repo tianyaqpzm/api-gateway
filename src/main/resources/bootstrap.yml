@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    nacos:
+      username: ${NACOS_USERNAME}
+      password: ${NACOS_PASSWORD}
+      server-addr: ${NACOS_SERVER_ADDR}
+      discovery:
+        group: DEFAULT_GROUP
+      config:
+        group: DEFAULT_GROUP
+        file-extension: yaml
+        import-check:
+          enabled: true
+    gateway:
+      discovery:
+        locator:
+          enabled: true # Enable discovery locator to automatically create routes for registered services
+          lower-case-service-id: true
+      routes:
+        # Example route
+        - id: dark_route
+          uri: https://dark.org
+          predicates:
+            - Path=/dark/**

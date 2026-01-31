@@ -1,0 +1,41 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR}
+        file-extension: yaml
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+      routes:
+        # Business Route: Forward /api/business/** to business-service
+        - id: business-route
+          uri: lb://business-service
+          predicates:
+            - Path=/api/business/**
+          filters:
+            - StripPrefix=2
+
+        # Agent Route: Forward /api/agent/** to python-agent
+        - id: agent-route
+          uri: lb://python-agent
+          predicates:
+            - Path=/api/agent/**
+          filters:
+            - StripPrefix=2
+        
+        # LLM Proxy Route: Forward /v1/chat/** to OpenAI/DeepSeek
+        - id: llm-proxy-route
+          uri: https://api.openai.com
+          predicates:
+            - Path=/v1/chat/**
+          filters:
+            - name: AiBillingFilter
