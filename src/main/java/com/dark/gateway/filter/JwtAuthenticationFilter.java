@@ -1,9 +1,10 @@
 package com.dark.gateway.filter;
 
-import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -19,12 +20,20 @@ import reactor.core.publisher.Mono;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 
+import org.springframework.util.AntPathMatcher;
+import org.springframework.util.PathMatcher;
+
 @Slf4j
 @Component
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
+    private final PathMatcher pathMatcher = new AntPathMatcher();
+
     // In production, move this to config/Nacos
     private static final String SECRET = "your-256-bit-secret-your-256-bit-secret";
+
+    @Autowired
+    private IgnoreWhiteProperties ignoreWhiteProperties; // 注入白名单配置
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -32,6 +41,11 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         // Skip auth for login or public endpoints if needed
         if (request.getURI().getPath().startsWith("/api/public")) {
+            return chain.filter(exchange);
+        }
+        String url = exchange.getRequest().getURI().getPath();
+        // 2. 🔥【关键修复】检查白名单：如果匹配，直接放行，不做 Token 校验
+        if (isWhiteList(url)) {
             return chain.filter(exchange);
         }
 
@@ -73,6 +87,20 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         response.getHeaders().add("Content-Type", "application/json");
 
         return response.writeWith(Mono.just(buffer));
+    }
+
+    /**
+     * 判断路径是否在白名单中
+     */
+    private boolean isWhiteList(String url) {
+        // 遍历配置中的白名单列表
+        for (String pattern : ignoreWhiteProperties.getUrls()) {
+            // 使用 AntPathMatcher 支持 ** 通配符
+            if (pathMatcher.match(pattern, url)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

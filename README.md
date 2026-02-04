@@ -117,19 +117,14 @@ MCP 的交互是一个标准化的生命周期，彻底解耦了调用方和实�
 阶段一：建立连接 (Connection)
 
 Python 发起 GET /mcp/sse。
-
 Java 建立长连接，并立即推送 endpoint 事件，告知 Python：“我在，发消息请 POST 到 /mcp/messages?sessionId=xyz”。
 
 阶段二：握手 (Handshake)
-
 Python 发送 initialize 指令。
-
 Java 返回协议版本和能力声明（Capabilities）。
 
 阶段三：发现 (Discovery)
-
 Python 发送 tools/list。
-
 Java 扫描内部注册的 Bean（策略模式），返回工具清单（如 query_order, search_knowledge_base）及其 JSON Schema。
 
 关键点：Python 的 LLM 此时“看到”了工具说明书。
@@ -197,6 +192,57 @@ sequenceDiagram
     deactivate Tool
     
     Java-->>Py: SSE Event: "message"<br>{result: {content: [{type: "text", text: "状态: 已发货"}]}}
+    deactivate Java
+    end
+```
+
+上半部分（蓝色区域）：用户正在聊天，Python 边思考、边输出、边写入数据库。
+
+下半部分（橙色区域）：用户回头看历史，Java 直接去数据库捞数据展示。
+
+```Mermaid
+sequenceDiagram
+    autonumber
+    actor User as 用户 (User)
+    participant GW as Gateway (网关)
+    participant Py as Python Agent (大脑)<br>Writer
+    participant Java as Java Service (后台)<br>Reader
+    participant DB as PostgreSQL (共享数据库)
+
+    rect rgb(227, 242, 253)
+    note right of User: 🟢 场景一：当前正在对话 (Python 直写)
+    
+    User->>GW: 1. 发送消息: "你好"
+    GW->>Py: 2. 路由转发 (SSE连接)
+    
+    activate Py
+    note right of Py: LangGraph 启动思考
+    
+    Py->>DB: 3. UPSERT Thread State
+    note right of Py: 写入短期记忆 (Checkpoint)<br>用于多轮对话上下文
+    
+    Py-->>User: 4. SSE 流式响应: "你..."
+    Py-->>User: 4. SSE 流式响应: "好..."
+    Py-->>User: 4. SSE 流式响应: "!"
+    
+    Py->>DB: 5. INSERT chat_history
+    note right of Py: 写入持久化记录<br>(用户看的那种 Q&A)
+    
+    Py-->>User: 6. SSE End (结束)
+    deactivate Py
+    end
+
+    rect rgb(255, 243, 224)
+    note right of User: 🟠 场景二：查看历史记录 (Java 只读)
+    
+    User->>GW: 7. 点击"历史记录" (GET /api/history)
+    GW->>Java: 8. 路由转发
+    
+    activate Java
+    Java->>DB: 9. SELECT * FROM chat_history<br>WHERE user_id = ...
+    DB-->>Java: 10. 返回结果集
+    
+    Java-->>User: 11. 返回 JSON 列表
     deactivate Java
     end
 ```

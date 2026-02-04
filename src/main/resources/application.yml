@@ -24,13 +24,13 @@ spring:
           filters:
             - StripPrefix=2
 
-        # Agent Route: Forward /api/agent/** to python-agent
+        # Agent Route: Forward /rest/dark/v1/agent/** to python-agent
         - id: agent-route
           uri: lb://python-agent
           predicates:
-            - Path=/api/agent/**
+            - Path=/rest/dark/v1/agent/**
           filters:
-            - StripPrefix=2
+            - StripPrefix=0
         
         # LLM Proxy Route: Forward /v1/chat/** to OpenAI/DeepSeek
         - id: llm-proxy-route

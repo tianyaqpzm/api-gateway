@@ -24,3 +24,7 @@ spring:
           uri: https://dark.org
           predicates:
             - Path=/dark/**
+security:
+  ignore:
+    urls:
+      - /rest/dark/v1/agent/** # 🔥 白名单，告诉 Java 代码别查 Token      
