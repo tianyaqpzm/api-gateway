@@ -87,7 +87,7 @@ jobs:
             docker run -d \
               --name api-gateway \
               --restart unless-stopped \
-              -p 8081:8081 \
+              -p 8281:8281 \
               -e TZ=Asia/Shanghai \
               -e NACOS_SERVER_ADDR=${{ secrets.NACOS_SERVER_ADDR }} \
               -e NACOS_USERNAME=${{ secrets.NACOS_USERNAME }} \
