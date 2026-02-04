@@ -1,0 +1,98 @@
+name: Build API Gateway DockerImage
+
+on:
+  push:
+    branches:
+      - master  # 主分支提交时触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn -B package -DskipTests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            tianyaqpzm/api-gateway
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,format=short
+
+      - name: Build and push Docker image
+        id: docker_build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Image digest
+        run: echo ${{ steps.docker_build.outputs.digest }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.VPS_USERNAME }} 
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.PORT || 22 }}
+          script: |
+            # 停止并删除旧容器
+            docker stop api-gateway || true
+            docker rm api-gateway || true
+            
+            # 拉取最新镜像
+            docker pull tianyaqpzm/api-gateway:master
+            
+            # 启动新容器
+            docker run -d \
+              --name api-gateway \
+              --restart unless-stopped \
+              -p 8081:8081 \
+              -e TZ=Asia/Shanghai \
+              -e NACOS_SERVER_ADDR=${{ secrets.NACOS_SERVER_ADDR }} \
+              -e NACOS_USERNAME=${{ secrets.NACOS_USERNAME }} \
+              -e NACOS_PASSWORD=${{ secrets.NACOS_PASSWORD }} \
+              tianyaqpzm/api-gateway:master
+            
+            # 清理无用镜像
+            docker image prune -f
