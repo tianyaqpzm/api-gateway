@@ -38,7 +38,7 @@ RUN chmod +x /app/entrypoint.sh && \
 
 # 设置环境变量
 ENV JAVA_OPTS="-Xmx128m -Xms128m -Xss256k -XX:+UseSerialGC -XX:MaxMetaspaceSize=64m -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom"
-ENV APP_PORT=8081
+ENV APP_PORT=8281
 
 # 声明端口
 EXPOSE $APP_PORT
