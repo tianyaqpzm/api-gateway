@@ -27,7 +27,7 @@ WORKDIR /app
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 # 2. 从构建阶段复制 jar 包 (假设 jar 包名包含 gateway)
-COPY --from=build /app/target/api-gateway*.jar /app/api-gateway.jar
+COPY --from=build /app/target/gateway*.jar /app/api-gateway.jar
 
 # 3. 复制并设置 entrypoint.sh
 COPY entrypoint.sh /app/entrypoint.sh
@@ -37,7 +37,7 @@ RUN chmod +x /app/entrypoint.sh && \
     sed -i 's/\r$//' /app/entrypoint.sh
 
 # 设置环境变量
-ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC -XX:MaxMetaspaceSize=128m -XX:+HeapDumpOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"
+ENV JAVA_OPTS="-Xmx128m -Xms128m -Xss256k -XX:+UseSerialGC -XX:MaxMetaspaceSize=64m -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom"
 ENV APP_PORT=8081
 
 # 声明端口
