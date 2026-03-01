@@ -35,6 +35,9 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     @Autowired
     private IgnoreWhiteProperties ignoreWhiteProperties; // 注入白名单配置
 
+    @org.springframework.beans.factory.annotation.Value("${spring.security.login-url}")
+    private String loginUrl;
+
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
@@ -81,8 +84,9 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(httpStatus);
 
-        // Return JSON error
-        byte[] bytes = ("{\"error\": \"" + err + "\"}").getBytes(StandardCharsets.UTF_8);
+        // Return JSON error with redirect URL
+        String jsonResponse = String.format("{\"url\": \"%s\", \"message\": \"%s\"}", loginUrl, err);
+        byte[] bytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
         DataBuffer buffer = response.bufferFactory().wrap(bytes);
         response.getHeaders().add("Content-Type", "application/json");
 
