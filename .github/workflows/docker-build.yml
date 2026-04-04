@@ -92,6 +92,7 @@ jobs:
               -e NACOS_SERVER_ADDR=${{ secrets.NACOS_SERVER_ADDR }} \
               -e NACOS_USERNAME=${{ secrets.NACOS_USERNAME }} \
               -e NACOS_PASSWORD=${{ secrets.NACOS_PASSWORD }} \
+              -e NACOS_NAMESPACE=${{ vars.NACOS_NAMESPACE }} \
               tianyaqpzm/api-gateway:master
             
             # 清理无用镜像
