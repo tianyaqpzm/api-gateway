@@ -1,6 +1,8 @@
 spring:
   application:
     name: gateway-service
+  profiles:
+    active: ${ENV_TYPE:prod}
   cloud:
     nacos:
       username: ${NACOS_USERNAME}
@@ -24,7 +26,7 @@ spring:
           uri: https://dark.org
           predicates:
             - Path=/dark/**
-security:
-  ignore:
-    urls:
-      - /rest/dark/v1/agent/** # 🔥 白名单，告诉 Java 代码别查 Token      
+# security:
+#   ignore:
+#     urls:
+#       - /rest/dark/v1/agent/** # 🔥 白名单，告诉 Java 代码别查 Token      

@@ -25,10 +25,18 @@ spring:
             - StripPrefix=2
 
         # Agent Route: Forward /rest/dark/v1/agent/** to python-agent
-        - id: agent-route
-          uri: lb://python-agent
+        # - id: agent-route
+        #   uri: lb://python-agent
+        #   predicates:
+        #     - Path=/rest/dark/v1/agent/**
+        #   filters:
+        #     - StripPrefix=0
+
+        # TimeKeeper Route: Forward /rest/dark/v1/time-limit-events/** to ai-langchain4j (业务后端)
+        - id: timekeeper-route
+          uri: lb://ai-langchain4j
           predicates:
-            - Path=/rest/dark/v1/agent/**
+            - Path=/rest/dark/v1/**
           filters:
             - StripPrefix=0
         
@@ -39,3 +47,41 @@ spring:
             - Path=/v1/chat/**
           filters:
             - name: AiBillingFilter
+
+        # # Gemini Proxy Route
+        # - id: gemini-route
+        #   uri: https://generativelanguage.googleapis.com
+        #   predicates:
+        #     - Path=/gemini/**
+        #   filters:
+        #     - StripPrefix=1
+        #     - AddRequestParameter=key, ${GEMINI_API_KEY}
+  security:
+    login-url: /oauth2/authorization/casdoor
+    ignore:
+      urls:
+        - /api/public/**
+    oauth2:
+      client:
+        registration:
+          casdoor:
+            provider: casdoor
+            client-id: df6a2403823b8f014be5
+            client-secret: 97d49db301cd4f5cbc37cd052917e7ee3b0c1c66
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope: openid,profile,email
+        provider:
+          casdoor:
+            # Casdoor 的 OIDC 发现地址 (Discovery Endpoint)
+            issuer-uri: http://tao-lan.122577.xyz:8381
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG
+app:
+  # 本地运行的 Angular 默认地址
+  frontend-url: http://localhost:3000
+  jwt:
+    # openssl rand -base64 32
+    secret: your-256-bit-secret-your-256-bit-secret

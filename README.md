@@ -73,7 +73,184 @@ graph TD
 ```
 
 
+### 认证流程
+OAuth2 Client 模式
+核心流程说明
+拦截 (Intercept)：网关发现用户未登录，通过 HTTP 302 重定向到 Casdoor 认证中心。
 
+认证 (Auth)：用户在 Casdoor 完成登录（支持账号密码、微信、GitHub等）。
+http://localhost:8281/login/oauth2/code/casdoor?code=c299573ff****************c9da29&state=JtRB3zHi29fAl8ykmvNsdMpqoWVS9XS-3X2YiA1MdiQ=
+
+回调 (Callback)：Casdoor 将授权码 (Code) 发回给网关。
+
+换票 (Exchange)：网关在后端（背靠背）向 Casdoor 换取 JWT (Access Token)。
+
+透传 (Relay)：网关将 JWT 放入 HTTP Header，转发给下游的 Python/Java 服务。
+
+
+```Mermaid
+sequenceDiagram
+    autonumber
+    actor User as 用户 (User/Browser)
+    participant GW as API Gateway<br>(Spring Cloud Gateway)
+    participant IDP as Casdoor<br>(OIDC Provider)
+    participant Backend as Python/Java Service<br>(Resource Server)
+
+    Note over User, GW: 阶段一：触发认证
+    User->>GW: 1. 请求受保护资源<br>(GET /api/agent/chat)
+    
+    activate GW
+    GW->>GW: 检查 Session/Token
+    Note right of GW: 发现未登录 (Unauthenticated)
+    GW-->>User: 2. 返回 302 Redirect<br>Location: https://casdoor.com/login...
+    deactivate GW
+
+    Note over User, IDP: 阶段二：用户登录
+    User->>IDP: 3. 访问登录页面
+    User->>IDP: 4. 输入账号密码 / 扫码登录
+    IDP->>IDP: 验证凭证
+    IDP-->>User: 5. 登录成功，返回 302 Redirect<br>Location: https://gateway/login/oauth2/code/casdoor?code=XYZ...
+
+    Note over User, GW: 阶段三：获取令牌 (后端交互)
+    User->>GW: 6. 携带授权码(Code)回调网关
+    
+    activate GW
+    GW->>IDP: 7. [后端直连] POST /api/login/oauth/access_token<br>(使用 Code 换取 Token)
+    activate IDP
+    IDP-->>GW: 8. 返回 JWT (Access Token + ID Token)
+    deactivate IDP
+    
+    GW->>GW: 创建本地 Session (WebFlux WebSession)
+    Note right of GW: 网关现在持有用户的身份信息
+
+    Note over GW, Backend: 阶段四：Token 透传与业务请求
+    GW->>Backend: 9. 转发原始请求 + Token<br>Header: [Authorization: Bearer <JWT>]
+    activate Backend
+    Backend->>Backend: 解析 JWT 获取 UserID
+    Backend-->>GW: 10. 返回业务数据 (Stream/JSON)
+    deactivate Backend
+    
+    GW-->>User: 11. 返回最终响应给前端
+    deactivate GW
+```
+
+#### 时序图
+核心时序图：Spring Cloud Gateway + Casdoor + GitHub SSO
+```Mermaid
+sequenceDiagram
+    autonumber
+    actor User as 用户 (Browser)
+    participant GW as API Gateway<br>(Spring Cloud Gateway)
+    participant Casdoor as Casdoor<br>(统一认证中心)
+    participant GitHub as GitHub/Google<br>(外部身份源)
+    
+    Note over User, GW: 阶段一：应用侧发起认证
+    User->>GW: 1. 访问 /api/chat (未登录)
+    GW-->>User: 2. 302 重定向到 Casdoor 登录页
+    
+    Note over User, Casdoor: 阶段二：用户选择社交登录
+    User->>Casdoor: 3. 加载登录页，点击 [GitHub 图标]
+    Casdoor-->>User: 4. 302 重定向到 GitHub 授权页<br>(client_id=Casdoor在GitHub注册的ID)
+    
+    Note over User, GitHub: 阶段三：第三方授权
+    User->>GitHub: 5. 在 GitHub 页面确认授权
+    GitHub-->>User: 6. 302 回调 Casdoor<br>(携带 GitHub 的 code)
+    
+    Note over Casdoor, GitHub: 阶段四：Casdoor 身份接管 (核心)
+    User->>Casdoor: 7. 回调 Casdoor 接口
+    activate Casdoor
+    Casdoor->>GitHub: 8. [后端直连] 用 code 换取 GitHub Token
+    GitHub-->>Casdoor: 9. 返回 Token
+    Casdoor->>GitHub: 10. [后端直连] 获取 UserInfo (Email/Avatar)
+    GitHub-->>Casdoor: 11. 返回用户信息
+    
+    rect rgb(240, 248, 255)
+        note right of Casdoor: 自动注册/绑定逻辑
+        Casdoor->>Casdoor: 检查 Email 是否存在库中?
+        alt 用户不存在
+            Casdoor->>Casdoor: 自动创建新账号 (Auto Sign-up)
+        else 用户已存在
+            Casdoor->>Casdoor: 关联 GitHub ID 到现有账号
+        end
+    end
+    
+    Casdoor-->>User: 12. 302 回调 Gateway<br>(携带 Casdoor 的 code)
+    deactivate Casdoor
+    
+    Note over User, GW: 阶段五：完成应用登录
+    User->>GW: 13. 回调 Gateway 接口
+    activate GW
+    GW->>Casdoor: 14. [后端直连] 用 code 换取 Casdoor JWT
+    Casdoor-->>GW: 15. 返回 JWT (包含统一后的 UserID)
+    GW->>GW: 建立 Session，保存 JWT
+    GW-->>User: 16. 登录成功，跳转回业务页面
+    deactivate GW
+```
+
+#### 单点登录
+##### 授权应用
+
+
+
+##### 登录应用
+SSO 的魔法在于 Casdoor 的全局 Session (Cookie)。
+用户在应用 A 登录时，Casdoor 给浏览器发了一张“全局门票”。
+当用户访问应用 B 时，浏览器自动带上这张“全局门票”。
+Casdoor 认出了门票，直接放行，跳过了输入密码的步骤。
+
+```Mermaid
+sequenceDiagram
+    autonumber
+    actor User as 用户 (Browser)
+    participant AppA as 应用 A<br>(Chat Service)
+    participant Casdoor as Casdoor<br>(SSO Server)
+    participant AppB as 应用 B<br>(Admin Dashboard)
+
+    %% 场景一：首次访问，需要登录
+    rect rgb(255, 240, 245)
+        note right of User: 🔴 场景一：首次访问应用 A (需要输入密码)
+        User->>AppA: 1. 访问 chat.com
+        AppA-->>User: 2. 发现未登录，302 重定向到 Casdoor
+        
+        User->>Casdoor: 3. 请求登录页面
+        User->>Casdoor: 4. 输入账号密码 (Login)
+        
+        activate Casdoor
+        Casdoor->>Casdoor: 验证成功
+        Casdoor->>Casdoor: 🍪 生成 Casdoor 全局 Cookie (TGC)
+        note right of Casdoor: 关键：浏览器现在有了 Casdoor 的 Session
+        Casdoor-->>User: 5. 302 回调应用 A (code=xyz)
+        deactivate Casdoor
+        
+        User->>AppA: 6. 携带 code 回调
+        activate AppA
+        AppA->>Casdoor: 7. 后端换取 Token
+        AppA-->>User: 8. 登录成功，进入 Chat 页面
+        deactivate AppA
+    end
+
+    %% 场景二：访问第二个应用，静默登录
+    rect rgb(227, 242, 253)
+        note right of User: 🟢 场景二：访问应用 B (SSO 生效，无需密码)
+        User->>AppB: 9. 访问 admin.com
+        AppB-->>User: 10. 发现未登录，302 重定向到 Casdoor
+        
+        note right of User: 浏览器自动携带 Casdoor 的 Cookie
+        User->>Casdoor: 11. 请求登录 (携带 🍪 Cookie)
+        
+        activate Casdoor
+        Casdoor->>Casdoor: 🔍 检查 Cookie... 有效！
+        note right of Casdoor: 发现用户已登录，跳过密码页
+        Casdoor-->>User: 12. ⚡️ 直接 302 回调应用 B (code=abc)
+        deactivate Casdoor
+        
+        User->>AppB: 13. 携带 code 回调
+        activate AppB
+        AppB->>Casdoor: 14. 后端换取 Token
+        AppB-->>User: 15. 登录成功，进入 Admin 页面
+        deactivate AppB
+    end
+```
 
 
 
